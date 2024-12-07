@@ -6,8 +6,11 @@ public class NHE : MonoBehaviour
     public static bool inHerWorld = false;
     public static bool doesSheSee = false;
     public Character character; // Single Character instance for both actions
-    public float maxSpeed = 25f;
-    public float currentSpeed = 0f;
+    private float currentSpeed = 0f;
+    private float baseSpeed = 2.5f; //Starting speed.
+    private float speedIncreaseRate = 0.1f; //Rate at which speed increases.
+    private float maxSpeed = 10f;
+    AudioSource aS;
 
     // Moves the character toward a target position at a specified speed
     public void MoveTowards(Vector3 targetPosition, float speed)
@@ -16,49 +19,76 @@ public class NHE : MonoBehaviour
         transform.position = Vector3.MoveTowards(transform.position, targetPosition, speed);
     }
 
-    private void Start()
+  private void Start()
+{
+    aS = GetComponent<AudioSource>();
+    if (aS == null)
     {
-        inHerWorld = false;
-        doesSheSee = false;
-        StartCoroutine(ChasePlayer());
+        Debug.LogError("No AudioSource found on this GameObject! Please add one.");
     }
+    inHerWorld = false;
+    doesSheSee = false;
+    StartCoroutine(ChasePlayer());
+}
 
     private IEnumerator ChasePlayer(){
+        float elapsedTime = 0f; // Track time elapsed in `inHerWorld`
+
         while (true)
         {
             if (inHerWorld)
             {
-                Vector3 directionToPlayer = (character.PlayerPosition - character.transform.position).normalized;
-
-                if (!doesSheSee)
-                {
-                    // Calculate speed based on aggression, with max speed at 25 units per second
-                    currentSpeed = Mathf.Lerp(0, maxSpeed, DeathLoop.Aggression / 10f);
-                }
-                else
-                {
-                    // Follow at speed equal to Aggression + 1
-                    currentSpeed = DeathLoop.Aggression + 1;
-                }
+                elapsedTime += Time.deltaTime;
+                currentSpeed = Mathf.Min(baseSpeed + elapsedTime * speedIncreaseRate, maxSpeed);
 
                 // Move the character toward the player's position
                 MoveTowards(character.PlayerPosition, currentSpeed * Time.deltaTime);
-
-                // Optional: Apply aerial movement if needed
 
                 yield return null; // Wait until the next frame
             }
             else
             {
+                elapsedTime = 0f; // Reset elapsed time when `inHerWorld` is false
+                currentSpeed = baseSpeed;
                 yield return null;
             }
         }
     }
 
-    public void OnTriggerEnter2D(Collider2D other){
-        if(other.CompareTag("Snocc")){
-            DeathLoop.ExecuteTrueDeath();
+
+    // Example method to retrieve the current level
+    private int GetCurrentLevel()
+    {
+        string sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+
+        // Example mapping based on scene names
+        if (sceneName.Contains("Level 1"))
+            return 1;
+        if (sceneName.Contains("Level 2"))
+            return 2;
+        if (sceneName.Contains("Level 3"))
+            return 3;
+
+        return 1; // Default to Level 1 if no match
+    }
+
+
+
+public void OnTriggerEnter2D(Collider2D other)
+{
+    if (other.CompareTag("Snocc"))
+    {
+        if (aS != null && aS.clip != null)
+        {
+            aS.Play();
+        }
+        else
+        {
+            Debug.LogWarning("AudioSource or AudioClip is missing. Check your setup.");
         }
     }
 }
 
+
+    
+}

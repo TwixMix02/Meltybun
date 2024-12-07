@@ -9,11 +9,16 @@ public class CameraBev : MonoBehaviour
     [SerializeField] public Vector3 offset;
     public Rigidbody2D rb;
     public static bool isJumping = false;
+    public static bool boosted = false;
 
     void Start()
     {
         rb = snoc.GetComponent<Rigidbody2D>();
         offset = new Vector3(0.3f, 0, 0);
+    }
+
+    public void setSmooth(float val){
+        smoothSpeed = val;
     }
 
     void LateUpdate()
@@ -36,6 +41,12 @@ public class CameraBev : MonoBehaviour
             // Only adjust X position when not jumping
             Vector3 smoothedPosition = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.fixedDeltaTime);
             transform.position = new Vector3(smoothedPosition.x, transform.position.y, transform.position.z);
+        }
+    }
+
+    void Update(){
+        if(boosted){
+            smoothSpeed *= 1.1f;
         }
     }
 }

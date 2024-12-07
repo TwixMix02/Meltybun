@@ -1,26 +1,72 @@
+using System;
 using System.Collections;
-using System.Collections.Generic;
+using System.Data.Common;
+using JetBrains.Annotations;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class DeathLoop : MonoBehaviour
 {
-    public static int Aggression = 0;
+    [SerializeField]public static int Aggression = 0;
     public static bool cameFromMenu = false;
     public static Character player;
+    //public DeathClips dc;
     [SerializeField] private Camera mainCamera;
+    private MusicPlayer mp;
 
     private static bool isInHerWorld = false;
     private static float startInHerWorldTime;
     public static bool isGO = false;
     public static bool isCom = false;
 
+    public static bool needToGo = false;
+
+    public static AudioSource audioSourceFalse;
+    public AudioClip falsie;
+    public AudioClip NHETheme;
+    public static int currLevel = 1;
+
+    [SerializeField] int currentLevel;
+
+    public static int[] openSlots = {0,0,0}; //0 means open, 1 means closed.
+    
+
+    [SerializeField] public static float timeRate = 1f; // Multiplier for testing (default: real-time)
+
+    private void Awake(){
+        SceneManager.sceneLoaded += OnSceneLoaded;
+        if(SceneManager.GetActiveScene().name == "Level 1"){
+            currentLevel = 1;
+            DeathLoop.currLevel = 1;
+            Debug.Log("We are at LEVEL 1!!");
+        }
+        else if(SceneManager.GetActiveScene().name == "Level 2"){
+            currentLevel = 2;
+            DeathLoop.currLevel = 2;
+            Debug.Log("We are at LEVEL 2!!");
+        }
+        else{
+            currentLevel = 3;
+            DeathLoop.currLevel = 3;
+            Debug.Log("We are at LEVEL 3!!");
+        }
+
+        mp = FindObjectOfType<MusicPlayer>();
+        mp.PlaySong("Song1");
+    }
     private void Start()
     {
+        //dc = GetComponent<DeathClips>();
+        DeathLoop.findLevel();
+        Aggression = 0;
+        Debug.Log("Delta Time is:" + Time.deltaTime.ToString());
         isGO = false;
         isCom = false;
         player = FindObjectOfType<Character>();
+        audioSourceFalse = FindObjectOfType<AudioSource>();
 
+        audioSourceFalse.clip = falsie;
         if (player == null)
         {
             Debug.LogError("Character instance not found in the scene.");
@@ -33,14 +79,31 @@ public class DeathLoop : MonoBehaviour
             return;
         }
 
-        StartCoroutine(CheckTransportChance());
+        //StartCoroutine(CheckTransportChance());
+        StartCoroutine(IncreaseAggressionOverTime()); // Start the Aggression increment coroutine
     }
 
-    public void ToNHE() // Changed to an instance method
+    public void Update(){
+        DeathLoop.findLevel();
+        currentLevel = FileManager.saveFile;
+    }
+
+    public void ToNHE()
     {
-        if (player == null || mainCamera == null)
+        // Fallback to Camera.main if mainCamera is null
+        if (mainCamera == null)
         {
-            Debug.LogError("Character or Camera instance is null in ToNHE.");
+            mainCamera = Camera.main; // Get the main camera from the scene
+            if (mainCamera == null)
+            {
+                Debug.LogError("No Main Camera found in the scene.");
+                return;
+            }
+        }
+
+        if (player == null)
+        {
+            Debug.LogError("Character instance is null in ToNHE.");
             return;
         }
 
@@ -48,23 +111,174 @@ public class DeathLoop : MonoBehaviour
         isInHerWorld = true;
         startInHerWorldTime = Time.time;
 
+        // Transport player and camera
         player.transform.position = new Vector3(player.transform.position.x, 672, player.transform.position.z);
         mainCamera.transform.position = new Vector3(mainCamera.transform.position.x, 666, mainCamera.transform.position.z);
 
+        // Trigger aggression decrease immediately
+        AggressionMeter aggressionMeter = FindObjectOfType<AggressionMeter>();
+        if (aggressionMeter != null)
+        {
+            aggressionMeter.StartDecrease(); // Trigger decrease on entering NHE
+        }
+        else
+        {
+            Debug.LogWarning("AggressionMeter instance not found in the scene.");
+        }
+        StopCoroutine(IncreaseAggressionOverTime());
+        StartCoroutine(DecreaseAggressionOverTime());
+        mp.StopSong();
+        mp.PlaySong("Song2");
         Debug.Log("Player and camera have been transported to NHE's world.");
-        StartCoroutine(CheckReturnToMainWorld()); // Called directly on the instance
+        StartCoroutine(CheckReturnToMainWorld());
     }
 
-    // Coroutine to check periodically if the player should be transported
+    public void toReturn(){
+        StopCoroutine(DecreaseAggressionOverTime());
+        StartCoroutine(IncreaseAggressionOverTime()); // Start the Aggression increment coroutine
+        mp.StopSong();
+        mp.PlaySong("Song1");
+        ReturnToMainWorld();
+    }
+    public static void ReturnToMainWorld()
+    {
+        NHE.inHerWorld = false;
+        isInHerWorld = false;
+
+        player.transform.position = new Vector3(player.transform.position.x, 0, player.transform.position.z);
+        Camera.main.transform.position = new Vector3(Camera.main.transform.position.x, 0, Camera.main.transform.position.z);
+        Aggression = 0;
+
+        Debug.Log("Player has been returned to the main world.");
+    }
+    public static void findLevel(){
+        if(SceneManager.GetActiveScene().ToString() == "Level 1"){
+            FileManager.saveFile = 1;
+        }
+        if(SceneManager.GetActiveScene().ToString() == "Level 2"){
+            FileManager.saveFile = 2;
+        }
+        if(SceneManager.GetActiveScene().ToString() == "Level 3"){
+            FileManager.saveFile = 3;
+        }
+    }
+    // New coroutine to gradually increase Aggression
+public IEnumerator IncreaseAggressionOverTime()
+{
+    AggressionMeter aggressionMeter = FindObjectOfType<AggressionMeter>();
+    if (aggressionMeter != null){
+        aggressionMeter.StartIncrease(); // Trigger decrease on entering NHE
+    }
+    else{    
+        Debug.Log("INCREASE HAS BEGUN!");
+    }
+
+    // Define target values
+    float targetAggression = 100f; // Maximum Aggression value
+    float duration; // Duration in real seconds to reach max Aggression (based on real time)
+    switch(currentLevel){
+            case 1:
+            duration = 300f;
+            break;
+            case 2:
+            duration = 200f;
+            break;
+            case 3:
+            duration  = 60f;
+            break;
+            default:
+            duration  = 100f;
+            break;
+        }
+    float elapsedTime = 0f;
+
+    // Ensure Aggression starts at least at 1
+    Aggression = Mathf.Max(Aggression, 1);
+
+    // The increase in aggression over time will be based on timeRate
+    while (Aggression < targetAggression)
+    {
+        // Increment elapsedTime by the scaled deltaTime (considering the timeRate)
+        elapsedTime += Time.deltaTime * timeRate;
+        //elapsedTime += 1f * timeRate;
+
+        // Calculate the progression of aggression over the duration
+        Aggression = Mathf.RoundToInt(Mathf.Lerp(1f, targetAggression, elapsedTime / duration));
+
+        // Ensure aggression doesn't exceed the target
+        if (Aggression >= targetAggression)
+        {
+            Aggression = Mathf.RoundToInt(targetAggression);
+            Debug.Log("Aggression reached 100!");
+            needToGo = true;
+            if (needToGo)
+            {
+                ToNHE(); // Transport to NHE once aggression reaches 100
+            }
+            needToGo = false;
+            yield break; // Exit the coroutine
+        }
+
+        // Log current aggression for debugging
+        //Debug.Log("Current Aggression: " + Aggression);
+
+        yield return null; // Wait for the next frame before updating again
+    }
+}
+
+public IEnumerator DecreaseAggressionOverTime()
+{
+    // Define target values
+    float targetAggression = 0f; // Minimum Aggression value (back to 0)
+    float duration = 30f; // Duration in real seconds to reach minimum Aggression (set to 30 seconds)
+    float elapsedTime = 0f;
+
+    // Ensure Aggression starts at 100 if it's higher than that
+    Aggression = Mathf.Min(Aggression, 100);
+
+    // The decrease in aggression over time will be based on timeRate
+    while (Aggression > targetAggression)
+    {
+        // Increment elapsedTime by the scaled deltaTime (considering the timeRate)
+        elapsedTime += Time.deltaTime * timeRate;
+
+        // Calculate the progression of aggression over the duration
+        Aggression = Mathf.RoundToInt(Mathf.Lerp(100f, targetAggression, elapsedTime / duration));
+
+        // Ensure aggression doesn't go below the target
+        if (Aggression <= targetAggression)
+        {
+            Aggression = Mathf.RoundToInt(targetAggression);
+            Debug.Log("Aggression reached 0!");
+            needToGo = true;
+
+            if (needToGo) // Only return to the main world if we're not already there
+            {
+                toReturn(); // Transport back to main world once aggression reaches 0
+            }
+
+            needToGo = false;
+
+            yield break; // Exit the coroutine
+        }
+
+        // Log current aggression for debugging
+        // Debug.Log("Current Aggression: " + Aggression);
+
+        yield return null; // Wait for the next frame before updating again
+    }
+}
+
+
     private IEnumerator CheckTransportChance()
     {
         while (true)
         {
-            // Calculate interval based on Aggression level
             int interval = Mathf.Max(1, 30 - 2 * Aggression);
-            yield return new WaitForSeconds(interval);
+            float scaledInterval = interval / timeRate; // Scale the interval by the timeRate
 
-            // Calculate the chance of transport based on Aggression
+            yield return new WaitForSeconds(scaledInterval); // Wait time adjusted by timeRate
+
             float chance;
             if (Aggression == 9)
             {
@@ -79,78 +293,61 @@ public class DeathLoop : MonoBehaviour
                 chance = 99f; // Aggression == 10 or above
             }
 
-            // Roll for transport based on calculated chance
-            if (Random.Range(0f, 100f) < chance)
+            if (UnityEngine.Random.Range(0f, 100f) < chance)
             {
-                ToNHE(); // Trigger transport
+                if (needToGo)
+                {
+                    ToNHE();
+                }
+                needToGo = false;
             }
         }
     }
 
-    // Coroutine to check if player should be returned to the main world
     private static IEnumerator CheckReturnToMainWorld()
     {
-        // Wait until player has been in NHE's world for at least 30 seconds
-        yield return new WaitForSeconds(30);
+        // Wait before starting return process
+        float waitTime = 30f / timeRate; // Adjust the time to scale with timeRate
+        yield return new WaitForSeconds(waitTime);
 
         while (isInHerWorld)
         {
-            yield return new WaitForSeconds(5);
+            // Adjust time for each check based on timeRate
+            yield return new WaitForSeconds(5f / timeRate);
 
-            // 1/10 chance to return to the main world
-            if (Random.Range(0, 10) == 0)
+            // If aggression reaches 0, return to the main world
+            if (Aggression <= 0)
             {
                 ReturnToMainWorld();
+                needToGo = true;
+                yield break; // Exit the coroutine once we've returned
             }
         }
     }
 
-    // Function to return the player to the main world
-    public static void ReturnToMainWorld()
-    {
-        NHE.inHerWorld = false;
-        isInHerWorld = false;
-
-        // Return player and camera to the main world's position (e.g., y = 0)
-        player.transform.position = new Vector3(player.transform.position.x, 0, player.transform.position.z);
-        Camera.main.transform.position = new Vector3(Camera.main.transform.position.x, 0, Camera.main.transform.position.z);
-
-        Debug.Log("Player has been returned to the main world.");
-    }
 
 
-
-    void Awake()
-    {
-        // Register the scene loaded event
-        SceneManager.sceneLoaded += OnSceneLoaded;
-    }
-
-    // Unregister event to avoid memory leaks
     void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
-    // Function to handle scene loading logic
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        // Check if we're entering Level 1
         if (scene.name == "Level 1")
         {
             if (cameFromMenu)
             {
-                Aggression = 0;  // Reset aggression if came from menu
-                cameFromMenu = false;  // Reset the flag for subsequent restarts
+                Aggression = 0;
+                cameFromMenu = false;
             }
             else
             {
-                Aggression++;  // Increment aggression if this is a restart
+                Aggression++;
             }
         }
     }
 
-    // Method to set the cameFromMenu flag, called from Menu.cs
     public static void SetCameFromMenu()
     {
         cameFromMenu = true;
@@ -176,31 +373,76 @@ public class DeathLoop : MonoBehaviour
         return Aggression;
     }
 
-    // Testing method to restart level and increment Aggression if not from menu
     public static void ExecuteFalseDeath()
     {
+        DeathLoop.PlayAS(DeathLoop.audioSourceFalse);  
         SetCameFromLevel();
-        SceneManager.LoadScene("Level 1");
+        String test = SceneManager.GetActiveScene().name;
+        Debug.Log("Testing: " + test);
+        SceneManager.LoadScene(test);
         Menu.firstRun = false;
+    }
+
+
+    public static void PlayAS(AudioSource audioSource)
+    {
+        if (audioSource == null)
+        {
+            Debug.LogError("AudioSource is not assigned!");
+            return;
+        }
+
+        // Play the audio clip
+        audioSource.Play();
     }
 
     public static void ExecuteTrueDeath()
     {
         SetGameOver();
-        SceneManager.LoadScene("Demo End");
-        
-        
+        SceneManager.LoadScene("Game End");
     }
 
-    public static void ExecuteVictory()
+    public void ExecuteLevelCompletion(int currLevel)
     {
+        Debug.Log("LEVEL COMPLETE!");
+        currLevel++;
+        if(currLevel < 4){
+        SavePlayerLevel(currLevel);
+        loadLevel(currLevel);
         SetGameEnd();
-        SceneManager.LoadScene("Demo End");
+        }
+        else{
+            SetGameEnd();
+            SceneManager.LoadScene("Game End");
+        }
     }
-    
 
-    void Update()
+    // To save the player's level placement
+    public void SavePlayerLevel(int level)
     {
-        //Debug.Log("Aggression = " + GetAggression().ToString());
+        if(FileManager.saveFile <= 3){
+            Debug.Log("#2:" + FileManager.saveFile.ToString());
+            FileManager.SetFileName("Sav0"+(FileManager.saveFile-1).ToString()+".txt");
+            FileManager.SaveData("CurrentLevel", level.ToString());
+            FileManager.SaveFloat("TimeRemaining", 600-TimerManager.currentTime);
+            FileManager.Flush();
+        }
+    }
+
+    public void loadLevel(int level){
+        switch(level){
+            case 2:
+            SceneManager.LoadScene("Level 2");
+            break;
+            case 3:
+            SceneManager.LoadScene("Level 3");
+            break;
+            case 4:
+            SceneManager.LoadScene("Game End");
+            break;
+            default:
+            Debug.Log("You have no save data here! Try again!");
+            break;
+        }
     }
 }

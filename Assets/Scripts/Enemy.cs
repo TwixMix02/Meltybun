@@ -14,19 +14,16 @@ public class Enemy : MonoBehaviour
         
     }
 
-    void OnTriggerEnter2D(Collider2D other){
+    /*void OnTriggerEnter2D(Collider2D other){
         if(other.CompareTag("Snocc")){
-            if(Character.isBall){
-                //TODO: Add destroy function (Post-Prototype)
-            }
-            else{
+
                 DeathLoop.ExecuteFalseDeath();
-            }
+                
         }
         else{
             return;
         }
-    }
+    }*/
 
     // Update is called once per frame
     void Update()
